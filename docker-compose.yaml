@@ -1,0 +1,179 @@
+version: "3.8"
+
+services:
+  # Main GoRL service
+  gorl:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: gorl:latest
+    container_name: gorl-main
+    environment:
+      # Default configuration
+      - GORL_URL=https://httpbin.org/get
+      - GORL_RATE=5.0
+      - GORL_DURATION=30s
+      - GORL_CONCURRENCY=2
+      - GORL_ALGORITHM=token-bucket
+      - GORL_HTTP_TIMEOUT=30s
+      - GORL_TCP_KEEP_ALIVE=true
+      - GORL_TCP_KEEP_ALIVE_PERIOD=30s
+      - GORL_DISABLE_KEEP_ALIVES=false
+      - GORL_MAX_IDLE_CONNS=100
+      - GORL_MAX_IDLE_CONNS_PER_HOST=10
+    command: ["-compact"]
+    profiles:
+      - default
+    restart: unless-stopped
+
+  # Example with different algorithm
+  gorl-leaky:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: gorl:latest
+    container_name: gorl-leaky-bucket
+    environment:
+      - GORL_URL=https://httpbin.org/get
+      - GORL_RATE=3.0
+      - GORL_DURATION=20s
+      - GORL_ALGORITHM=leaky-bucket
+    command: ["-compact"]
+    profiles:
+      - examples
+    restart: unless-stopped
+
+  # Example with fixed window
+  gorl-fixed:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: gorl:latest
+    container_name: gorl-fixed-window
+    environment:
+      - GORL_URL=https://httpbin.org/get
+      - GORL_RATE=4.0
+      - GORL_DURATION=25s
+      - GORL_ALGORITHM=fixed-window
+    command: ["-compact"]
+    profiles:
+      - examples
+    restart: unless-stopped
+
+  # Development service with volume mount for live code changes
+  gorl-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      args:
+        - GO_VERSION=1.21
+    image: gorl:dev
+    container_name: gorl-development
+    volumes:
+      - .:/app
+      - go-mod-cache:/go/pkg/mod
+      - go-build-cache:/root/.cache/go-build
+    working_dir: /app
+    environment:
+      - GORL_URL=https://httpbin.org/get
+      - GORL_RATE=2.0
+      - GORL_DURATION=15s
+    command: ["make", "run-example"]
+    profiles:
+      - dev
+    restart: unless-stopped
+
+  # Test runner service
+  gorl-test:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      args:
+        - GO_VERSION=1.21
+    image: gorl:dev
+    container_name: gorl-tests
+    volumes:
+      - .:/app
+      - go-mod-cache:/go/pkg/mod
+      - go-build-cache:/root/.cache/go-build
+    working_dir: /app
+    command: ["make", "test"]
+    profiles:
+      - test
+    restart: "no"
+
+  # HTTP test server (for testing against local endpoints)
+  httpbin:
+    image: kennethreitz/httpbin:latest
+    container_name: gorl-httpbin
+    ports:
+      - "8080:80"
+    profiles:
+      - dev
+      - test
+    restart: unless-stopped
+
+  # Nginx reverse proxy for load testing
+  nginx:
+    image: nginx:alpine
+    container_name: gorl-nginx
+    ports:
+      - "8081:80"
+    volumes:
+      - ./docker/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - httpbin
+    profiles:
+      - dev
+      - load-test
+    restart: unless-stopped
+
+  # GoRL testing against local services
+  gorl-local:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: gorl:latest
+    container_name: gorl-local-test
+    depends_on:
+      - httpbin
+      - nginx
+    environment:
+      - GORL_URL=http://nginx:80/get
+      - GORL_RATE=10.0
+      - GORL_DURATION=60s
+      - GORL_CONCURRENCY=3
+      - GORL_ALGORITHM=sliding-window-counter
+    command: ["-live"]
+    profiles:
+      - load-test
+    restart: unless-stopped
+
+  # Monitoring and metrics (Prometheus + Grafana could be added here)
+  # For now, we'll use a simple stats collector
+  stats-collector:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: gorl:latest
+    container_name: gorl-stats
+    environment:
+      - GORL_URL=https://httpbin.org/get
+      - GORL_RATE=1.0
+      - GORL_DURATION=300s # 5 minutes
+      - GORL_ALGORITHM=token-bucket
+    command: ["-compact", "-report-interval=10s"]
+    profiles:
+      - monitoring
+    restart: unless-stopped
+
+volumes:
+  go-mod-cache:
+    driver: local
+  go-build-cache:
+    driver: local
+
+networks:
+  default:
+    name: gorl-network
+    driver: bridge

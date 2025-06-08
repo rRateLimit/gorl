@@ -1,0 +1,55 @@
+# Development Dockerfile for GoRL
+# This image includes development tools and is meant for local development
+
+ARG GO_VERSION=1.21
+FROM golang:${GO_VERSION}-alpine
+
+# Install development tools
+RUN apk add --no-cache \
+    git \
+    make \
+    curl \
+    ca-certificates \
+    tzdata \
+    bash \
+    entr \
+    && rm -rf /var/cache/apk/*
+
+# Install Go development tools
+RUN go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest && \
+    go install github.com/air-verse/air@latest && \
+    go clean -cache
+
+# Set working directory
+WORKDIR /app
+
+# Copy go mod and sum files for dependency caching
+COPY go.mod go.sum ./
+
+# Download dependencies
+RUN go mod download
+
+# Copy source code (this layer will be overridden by volume mount in development)
+COPY . .
+
+# Create a non-root user for development
+RUN addgroup -g 1001 -S developer && \
+    adduser -u 1001 -S developer -G developer
+
+# Change ownership of the app directory
+RUN chown -R developer:developer /app
+
+# Switch to non-root user
+USER developer
+
+# Expose port for potential web interfaces or debugging
+EXPOSE 8080
+
+# Set environment variables for development
+ENV GO111MODULE=on
+ENV CGO_ENABLED=0
+ENV GOOS=linux
+ENV GOARCH=amd64
+
+# Default command for development
+CMD ["make", "help"]

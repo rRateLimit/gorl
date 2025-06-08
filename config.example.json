@@ -9,5 +9,12 @@
     "User-Agent": "GoRL Rate Limiter",
     "Accept": "application/json"
   },
-  "body": ""
+  "body": "",
+
+  "httpTimeout": "30s",
+  "tcpKeepAlive": true,
+  "tcpKeepAlivePeriod": "30s",
+  "disableKeepAlives": false,
+  "maxIdleConns": 100,
+  "maxIdleConnsPerHost": 10
 }
