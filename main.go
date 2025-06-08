@@ -16,6 +16,313 @@ import (
 	"golang.org/x/time/rate"
 )
 
+// RateLimiterType represents the type of rate limiting algorithm
+type RateLimiterType string
+
+const (
+	TokenBucket          RateLimiterType = "token-bucket"
+	LeakyBucket          RateLimiterType = "leaky-bucket"
+	FixedWindow          RateLimiterType = "fixed-window"
+	SlidingWindowLog     RateLimiterType = "sliding-window-log"
+	SlidingWindowCounter RateLimiterType = "sliding-window-counter"
+)
+
+// RateLimiter interface for different rate limiting algorithms
+type RateLimiter interface {
+	Allow(ctx context.Context) error
+	String() string
+}
+
+// TokenBucketLimiter implements token bucket algorithm
+type TokenBucketLimiter struct {
+	limiter *rate.Limiter
+}
+
+// NewTokenBucketLimiter creates a new token bucket rate limiter
+func NewTokenBucketLimiter(requestsPerSecond float64) *TokenBucketLimiter {
+	return &TokenBucketLimiter{
+		limiter: rate.NewLimiter(rate.Limit(requestsPerSecond), 1),
+	}
+}
+
+func (t *TokenBucketLimiter) Allow(ctx context.Context) error {
+	return t.limiter.Wait(ctx)
+}
+
+func (t *TokenBucketLimiter) String() string {
+	return "Token Bucket"
+}
+
+// LeakyBucketLimiter implements leaky bucket algorithm
+type LeakyBucketLimiter struct {
+	interval    time.Duration
+	lastRequest time.Time
+	mutex       sync.Mutex
+}
+
+// NewLeakyBucketLimiter creates a new leaky bucket rate limiter
+func NewLeakyBucketLimiter(requestsPerSecond float64) *LeakyBucketLimiter {
+	interval := time.Duration(float64(time.Second) / requestsPerSecond)
+	return &LeakyBucketLimiter{
+		interval:    interval,
+		lastRequest: time.Now().Add(-interval), // Allow first request immediately
+	}
+}
+
+func (l *LeakyBucketLimiter) Allow(ctx context.Context) error {
+	l.mutex.Lock()
+	defer l.mutex.Unlock()
+
+	now := time.Now()
+	timeSinceLastRequest := now.Sub(l.lastRequest)
+
+	if timeSinceLastRequest < l.interval {
+		sleepTime := l.interval - timeSinceLastRequest
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(sleepTime):
+		}
+	}
+
+	l.lastRequest = time.Now()
+	return nil
+}
+
+func (l *LeakyBucketLimiter) String() string {
+	return "Leaky Bucket"
+}
+
+// FixedWindowLimiter implements fixed window algorithm
+type FixedWindowLimiter struct {
+	windowSize    time.Duration
+	maxRequests   int
+	currentWindow time.Time
+	requestCount  int
+	mutex         sync.Mutex
+}
+
+// NewFixedWindowLimiter creates a new fixed window rate limiter
+func NewFixedWindowLimiter(requestsPerSecond float64) *FixedWindowLimiter {
+	windowSize := time.Second
+	maxRequests := int(requestsPerSecond)
+	if maxRequests == 0 {
+		maxRequests = 1
+	}
+
+	return &FixedWindowLimiter{
+		windowSize:    windowSize,
+		maxRequests:   maxRequests,
+		currentWindow: time.Now().Truncate(windowSize),
+	}
+}
+
+func (f *FixedWindowLimiter) Allow(ctx context.Context) error {
+	f.mutex.Lock()
+	defer f.mutex.Unlock()
+
+	now := time.Now()
+	currentWindowStart := now.Truncate(f.windowSize)
+
+	// Reset counter if we're in a new window
+	if currentWindowStart.After(f.currentWindow) {
+		f.currentWindow = currentWindowStart
+		f.requestCount = 0
+	}
+
+	// Check if we've exceeded the limit
+	if f.requestCount >= f.maxRequests {
+		// Wait until next window
+		nextWindow := f.currentWindow.Add(f.windowSize)
+		sleepTime := nextWindow.Sub(now)
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(sleepTime):
+		}
+
+		// Update to new window
+		f.currentWindow = time.Now().Truncate(f.windowSize)
+		f.requestCount = 0
+	}
+
+	f.requestCount++
+	return nil
+}
+
+func (f *FixedWindowLimiter) String() string {
+	return "Fixed Window"
+}
+
+// SlidingWindowLogLimiter implements sliding window log algorithm
+type SlidingWindowLogLimiter struct {
+	maxRequests  int
+	windowSize   time.Duration
+	requestTimes []time.Time
+	mutex        sync.Mutex
+}
+
+// NewSlidingWindowLogLimiter creates a new sliding window log rate limiter
+func NewSlidingWindowLogLimiter(requestsPerSecond float64) *SlidingWindowLogLimiter {
+	return &SlidingWindowLogLimiter{
+		maxRequests:  int(requestsPerSecond),
+		windowSize:   time.Second,
+		requestTimes: make([]time.Time, 0),
+	}
+}
+
+func (s *SlidingWindowLogLimiter) Allow(ctx context.Context) error {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	now := time.Now()
+	windowStart := now.Add(-s.windowSize)
+
+	// Remove old requests outside the window
+	validRequests := make([]time.Time, 0)
+	for _, reqTime := range s.requestTimes {
+		if reqTime.After(windowStart) {
+			validRequests = append(validRequests, reqTime)
+		}
+	}
+	s.requestTimes = validRequests
+
+	// Check if we can make another request
+	if len(s.requestTimes) >= s.maxRequests {
+		// Find the oldest request and wait until it's outside the window
+		oldestRequest := s.requestTimes[0]
+		waitTime := oldestRequest.Add(s.windowSize).Sub(now)
+
+		if waitTime > 0 {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(waitTime):
+			}
+		}
+
+		// Retry the check after waiting
+		return s.Allow(ctx)
+	}
+
+	// Add current request to log
+	s.requestTimes = append(s.requestTimes, now)
+	return nil
+}
+
+func (s *SlidingWindowLogLimiter) String() string {
+	return "Sliding Window Log"
+}
+
+// SlidingWindowCounterLimiter implements sliding window counter algorithm
+type SlidingWindowCounterLimiter struct {
+	maxRequests      int
+	windowSize       time.Duration
+	subWindowSize    time.Duration
+	subWindowCount   int
+	counters         []int
+	currentSubWindow int
+	lastUpdateTime   time.Time
+	mutex            sync.Mutex
+}
+
+// NewSlidingWindowCounterLimiter creates a new sliding window counter rate limiter
+func NewSlidingWindowCounterLimiter(requestsPerSecond float64) *SlidingWindowCounterLimiter {
+	subWindowCount := 10 // Divide window into 10 sub-windows for better precision
+	windowSize := time.Second
+	subWindowSize := windowSize / time.Duration(subWindowCount)
+
+	return &SlidingWindowCounterLimiter{
+		maxRequests:    int(requestsPerSecond),
+		windowSize:     windowSize,
+		subWindowSize:  subWindowSize,
+		subWindowCount: subWindowCount,
+		counters:       make([]int, subWindowCount),
+		lastUpdateTime: time.Now(),
+	}
+}
+
+func (s *SlidingWindowCounterLimiter) Allow(ctx context.Context) error {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	now := time.Now()
+	s.updateCounters(now)
+
+	// Calculate total requests in current window
+	totalRequests := 0
+	for _, count := range s.counters {
+		totalRequests += count
+	}
+
+	// Check if we can make another request
+	if totalRequests >= s.maxRequests {
+		// Wait for the next sub-window
+		nextSubWindow := s.lastUpdateTime.Add(s.subWindowSize)
+		waitTime := nextSubWindow.Sub(now)
+
+		if waitTime > 0 {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(waitTime):
+			}
+		}
+
+		// Retry after waiting
+		return s.Allow(ctx)
+	}
+
+	// Increment counter for current sub-window
+	s.counters[s.currentSubWindow]++
+	return nil
+}
+
+func (s *SlidingWindowCounterLimiter) updateCounters(now time.Time) {
+	timeDiff := now.Sub(s.lastUpdateTime)
+	subWindowsPassed := int(timeDiff / s.subWindowSize)
+
+	if subWindowsPassed > 0 {
+		// Clear counters for passed sub-windows
+		for i := 0; i < subWindowsPassed && i < s.subWindowCount; i++ {
+			s.currentSubWindow = (s.currentSubWindow + 1) % s.subWindowCount
+			s.counters[s.currentSubWindow] = 0
+		}
+
+		// If more than a full window has passed, clear all counters
+		if subWindowsPassed >= s.subWindowCount {
+			for i := range s.counters {
+				s.counters[i] = 0
+			}
+		}
+
+		s.lastUpdateTime = now
+	}
+}
+
+func (s *SlidingWindowCounterLimiter) String() string {
+	return "Sliding Window Counter"
+}
+
+// CreateRateLimiter creates a rate limiter based on the specified type
+func CreateRateLimiter(limiterType RateLimiterType, requestsPerSecond float64) RateLimiter {
+	switch limiterType {
+	case TokenBucket:
+		return NewTokenBucketLimiter(requestsPerSecond)
+	case LeakyBucket:
+		return NewLeakyBucketLimiter(requestsPerSecond)
+	case FixedWindow:
+		return NewFixedWindowLimiter(requestsPerSecond)
+	case SlidingWindowLog:
+		return NewSlidingWindowLogLimiter(requestsPerSecond)
+	case SlidingWindowCounter:
+		return NewSlidingWindowCounterLimiter(requestsPerSecond)
+	default:
+		return NewTokenBucketLimiter(requestsPerSecond)
+	}
+}
+
 // Config holds the configuration for the rate limiter
 type Config struct {
 	URL               string            // target URL
@@ -25,13 +332,15 @@ type Config struct {
 	Method            string            // HTTP method
 	Headers           map[string]string // HTTP headers
 	Body              string            // request body
+	Algorithm         RateLimiterType   // rate limiting algorithm
 }
 
 // UnmarshalJSON implements custom JSON unmarshaling for Config
 func (c *Config) UnmarshalJSON(data []byte) error {
 	type Alias Config
 	aux := &struct {
-		Duration string `json:"duration"`
+		Duration  string `json:"duration"`
+		Algorithm string `json:"algorithm"`
 		*Alias
 	}{
 		Alias: (*Alias)(c),
@@ -47,6 +356,10 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 			return fmt.Errorf("invalid duration format: %v", err)
 		}
 		c.Duration = duration
+	}
+
+	if aux.Algorithm != "" {
+		c.Algorithm = RateLimiterType(aux.Algorithm)
 	}
 
 	return nil
@@ -73,18 +386,18 @@ type RequestResult struct {
 
 // RateLimitTester is the main struct for testing rate limits
 type RateLimitTester struct {
-	config  Config
-	stats   *Stats
-	limiter *rate.Limiter
-	client  *http.Client
+	config      Config
+	stats       *Stats
+	rateLimiter RateLimiter
+	client      *http.Client
 }
 
 // NewRateLimitTester creates a new rate limit tester
 func NewRateLimitTester(config Config) *RateLimitTester {
 	return &RateLimitTester{
-		config:  config,
-		stats:   NewStats(),
-		limiter: rate.NewLimiter(rate.Limit(config.RequestsPerSecond), 1),
+		config:      config,
+		stats:       NewStats(),
+		rateLimiter: CreateRateLimiter(config.Algorithm, config.RequestsPerSecond),
 		client: &http.Client{
 			Timeout: 30 * time.Second,
 		},
@@ -199,7 +512,7 @@ func (r *RateLimitTester) worker(ctx context.Context, wg *sync.WaitGroup) {
 			return
 		default:
 			// Wait for rate limiter
-			if err := r.limiter.Wait(ctx); err != nil {
+			if err := r.rateLimiter.Allow(ctx); err != nil {
 				return
 			}
 
@@ -215,6 +528,7 @@ func (r *RateLimitTester) Run() {
 	fmt.Printf("Starting rate limit test...\n")
 	fmt.Printf("Target URL: %s\n", r.config.URL)
 	fmt.Printf("Rate: %.2f requests/second\n", r.config.RequestsPerSecond)
+	fmt.Printf("Algorithm: %s\n", r.rateLimiter.String())
 	fmt.Printf("Duration: %v\n", r.config.Duration)
 	fmt.Printf("Concurrency: %d\n", r.config.Concurrency)
 	fmt.Printf("Method: %s\n", r.config.Method)
@@ -292,6 +606,7 @@ func (r *RateLimitTester) printFinalStats() {
 	actualRate := float64(stats.TotalRequests) / r.config.Duration.Seconds()
 	fmt.Printf("\nActual Rate: %.2f requests/second\n", actualRate)
 	fmt.Printf("Target Rate: %.2f requests/second\n", r.config.RequestsPerSecond)
+	fmt.Printf("Algorithm Used: %s\n", r.rateLimiter.String())
 }
 
 // parseHeaders parses header string in format "key1:value1,key2:value2"
@@ -316,6 +631,7 @@ func main() {
 	var (
 		url         = flag.String("url", "", "Target URL to test (required)")
 		rate        = flag.Float64("rate", 1.0, "Requests per second")
+		algorithm   = flag.String("algorithm", "token-bucket", "Rate limiting algorithm (token-bucket, leaky-bucket, fixed-window, sliding-window-log, sliding-window-counter)")
 		duration    = flag.Duration("duration", 10*time.Second, "Duration to run the test")
 		concurrency = flag.Int("concurrency", 1, "Number of concurrent workers")
 		method      = flag.String("method", "GET", "HTTP method")
@@ -331,8 +647,15 @@ func main() {
 		fmt.Println("Rate Limit Tester")
 		fmt.Println("Usage:")
 		flag.PrintDefaults()
+		fmt.Println("\nAvailable Algorithms:")
+		fmt.Println("  token-bucket         - Token bucket algorithm (default)")
+		fmt.Println("  leaky-bucket         - Leaky bucket algorithm")
+		fmt.Println("  fixed-window         - Fixed window algorithm")
+		fmt.Println("  sliding-window-log   - Sliding window log algorithm")
+		fmt.Println("  sliding-window-counter - Sliding window counter algorithm")
 		fmt.Println("\nExamples:")
 		fmt.Println("  gorl -url=http://example.com -rate=10 -duration=30s")
+		fmt.Println("  gorl -url=http://api.example.com -rate=5 -algorithm=leaky-bucket")
 		fmt.Println("  gorl -url=http://api.example.com -rate=5 -concurrency=2 -method=POST -body='{\"test\":\"data\"}'")
 		fmt.Println("  gorl -config=config.json")
 		return
@@ -358,12 +681,31 @@ func main() {
 		config = Config{
 			URL:               *url,
 			RequestsPerSecond: *rate,
+			Algorithm:         RateLimiterType(*algorithm),
 			Duration:          *duration,
 			Concurrency:       *concurrency,
 			Method:            strings.ToUpper(*method),
 			Headers:           parseHeaders(*headers),
 			Body:              *body,
 		}
+	}
+
+	// Set default algorithm if not specified
+	if config.Algorithm == "" {
+		config.Algorithm = TokenBucket
+	}
+
+	// Validate algorithm
+	validAlgorithms := []RateLimiterType{TokenBucket, LeakyBucket, FixedWindow, SlidingWindowLog, SlidingWindowCounter}
+	isValidAlgorithm := false
+	for _, validAlg := range validAlgorithms {
+		if config.Algorithm == validAlg {
+			isValidAlgorithm = true
+			break
+		}
+	}
+	if !isValidAlgorithm {
+		log.Fatalf("Invalid algorithm: %s. Valid algorithms are: %v", config.Algorithm, validAlgorithms)
 	}
 
 	// Validate config

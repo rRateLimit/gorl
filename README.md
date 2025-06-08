@@ -6,6 +6,7 @@ A Go tool for testing HTTP request rate limits. This tool sends HTTP requests at
 
 - Send HTTP requests at a specified rate (requests/second)
 - Execute requests with multiple concurrent workers
+- Multiple rate limiting algorithms (Token Bucket, Leaky Bucket, Fixed Window, Sliding Window Log, Sliding Window Counter)
 - Real-time statistics reporting
 - Detailed result reports (response times, status code distribution, etc.)
 - Configuration via command-line arguments or JSON file
@@ -30,7 +31,7 @@ Basic usage:
 Advanced configuration:
 
 ```bash
-./gorl -url=https://api.example.com -rate=10 -duration=60s -concurrency=3 -method=POST -headers="Content-Type:application/json,Authorization:Bearer token123" -body='{"test":"data"}'
+./gorl -url=https://api.example.com -rate=10 -algorithm=leaky-bucket -duration=60s -concurrency=3 -method=POST -headers="Content-Type:application/json,Authorization:Bearer token123" -body='{"test":"data"}'
 ```
 
 ### Configuration File
@@ -47,6 +48,7 @@ Example configuration file (see `config.example.json`):
 {
   "url": "https://httpbin.org/get",
   "requestsPerSecond": 5.0,
+  "algorithm": "token-bucket",
   "duration": "30s",
   "concurrency": 2,
   "method": "GET",
@@ -58,19 +60,67 @@ Example configuration file (see `config.example.json`):
 }
 ```
 
+## Rate Limiting Algorithms
+
+GoRL supports multiple rate limiting algorithms, each with different characteristics:
+
+### Token Bucket (default)
+
+- **Best for**: Allowing bursts while maintaining average rate
+- **How it works**: Tokens are added to a bucket at a constant rate. Each request consumes one token
+- **Pros**: Allows short bursts, smooth for variable traffic
+- **Cons**: May allow more requests than expected in short periods
+
+### Leaky Bucket
+
+- **Best for**: Enforcing strict rate limits with no bursts
+- **How it works**: Requests are processed at a fixed rate, excess requests wait
+- **Pros**: Guarantees exact rate, prevents bursts
+- **Cons**: May introduce latency for bursty traffic
+
+### Fixed Window
+
+- **Best for**: Simple rate limiting with predictable windows
+- **How it works**: Counts requests in fixed time windows (e.g., per second)
+- **Pros**: Simple, predictable behavior
+- **Cons**: Can allow double the rate at window boundaries
+
+### Sliding Window Log
+
+- **Best for**: Precise rate limiting with perfect accuracy
+- **How it works**: Maintains a log of all request timestamps
+- **Pros**: Most accurate, no boundary effects
+- **Cons**: High memory usage for high traffic
+
+### Sliding Window Counter
+
+- **Best for**: Good approximation with moderate memory usage
+- **How it works**: Uses multiple sub-windows to approximate sliding behavior
+- **Pros**: Good accuracy, reasonable memory usage
+- **Cons**: More complex than fixed window
+
 ## Options
 
-| Option         | Description                                   | Default |
-| -------------- | --------------------------------------------- | ------- |
-| `-url`         | Target URL to test (required)                 | -       |
-| `-rate`        | Requests per second                           | 1.0     |
-| `-duration`    | Test execution duration                       | 10s     |
-| `-concurrency` | Number of concurrent workers                  | 1       |
-| `-method`      | HTTP method                                   | GET     |
-| `-headers`     | HTTP headers (key1:value1,key2:value2 format) | -       |
-| `-body`        | Request body                                  | -       |
-| `-config`      | Configuration file path                       | -       |
-| `-help`        | Show help message                             | -       |
+| Option         | Description                                   | Default      |
+| -------------- | --------------------------------------------- | ------------ |
+| `-url`         | Target URL to test (required)                 | -            |
+| `-rate`        | Requests per second                           | 1.0          |
+| `-algorithm`   | Rate limiting algorithm                       | token-bucket |
+| `-duration`    | Test execution duration                       | 10s          |
+| `-concurrency` | Number of concurrent workers                  | 1            |
+| `-method`      | HTTP method                                   | GET          |
+| `-headers`     | HTTP headers (key1:value1,key2:value2 format) | -            |
+| `-body`        | Request body                                  | -            |
+| `-config`      | Configuration file path                       | -            |
+| `-help`        | Show help message                             | -            |
+
+### Available Algorithms
+
+- `token-bucket` - Token bucket algorithm (default)
+- `leaky-bucket` - Leaky bucket algorithm
+- `fixed-window` - Fixed window algorithm
+- `sliding-window-log` - Sliding window log algorithm
+- `sliding-window-counter` - Sliding window counter algorithm
 
 ## Output Example
 
@@ -78,6 +128,7 @@ Example configuration file (see `config.example.json`):
 Starting rate limit test...
 Target URL: https://httpbin.org/get
 Rate: 5.00 requests/second
+Algorithm: Token Bucket
 Duration: 30s
 Concurrency: 2
 Method: GET
@@ -102,6 +153,7 @@ Response Times:
 
 Actual Rate: 5.00 requests/second
 Target Rate: 5.00 requests/second
+Algorithm Used: Token Bucket
 ```
 
 ## License

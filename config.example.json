@@ -1,6 +1,7 @@
 {
   "url": "https://httpbin.org/get",
   "requestsPerSecond": 5.0,
+  "algorithm": "token-bucket",
   "duration": "30s",
   "concurrency": 2,
   "method": "GET",
