@@ -27,6 +27,31 @@ type Config struct {
 	Body              string            // request body
 }
 
+// UnmarshalJSON implements custom JSON unmarshaling for Config
+func (c *Config) UnmarshalJSON(data []byte) error {
+	type Alias Config
+	aux := &struct {
+		Duration string `json:"duration"`
+		*Alias
+	}{
+		Alias: (*Alias)(c),
+	}
+
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+
+	if aux.Duration != "" {
+		duration, err := time.ParseDuration(aux.Duration)
+		if err != nil {
+			return fmt.Errorf("invalid duration format: %v", err)
+		}
+		c.Duration = duration
+	}
+
+	return nil
+}
+
 // Stats holds the statistics for the requests
 type Stats struct {
 	TotalRequests      int64

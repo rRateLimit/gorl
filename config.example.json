@@ -1,0 +1,12 @@
+{
+  "url": "https://httpbin.org/get",
+  "requestsPerSecond": 5.0,
+  "duration": "30s",
+  "concurrency": 2,
+  "method": "GET",
+  "headers": {
+    "User-Agent": "GoRL Rate Limiter",
+    "Accept": "application/json"
+  },
+  "body": ""
+}
