@@ -2,10 +2,13 @@ package limiter
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/rRateLimit/gorl/internal/config"
+	"github.com/rRateLimit/gorl/pkg/ratelimiter"
 	"golang.org/x/time/rate"
 )
 
@@ -13,6 +16,26 @@ import (
 type RateLimiter interface {
 	Allow(ctx context.Context) error
 	String() string
+}
+
+// CustomRateLimiterAdapter adapts the public RateLimiter interface to the internal interface
+type CustomRateLimiterAdapter struct {
+	limiter ratelimiter.RateLimiter
+}
+
+// NewCustomRateLimiterAdapter creates an adapter for custom rate limiters
+func NewCustomRateLimiterAdapter(customLimiter ratelimiter.RateLimiter) *CustomRateLimiterAdapter {
+	return &CustomRateLimiterAdapter{
+		limiter: customLimiter,
+	}
+}
+
+func (c *CustomRateLimiterAdapter) Allow(ctx context.Context) error {
+	return c.limiter.Allow(ctx)
+}
+
+func (c *CustomRateLimiterAdapter) String() string {
+	return c.limiter.String()
 }
 
 // TokenBucketLimiter implements token bucket algorithm
@@ -289,6 +312,18 @@ func (s *SlidingWindowCounterLimiter) String() string {
 
 // NewRateLimiter creates a rate limiter based on the specified type
 func NewRateLimiter(limiterType config.RateLimiterType, requestsPerSecond float64) RateLimiter {
+	// Check if it's a custom algorithm first
+	if IsCustomAlgorithm(string(limiterType)) {
+		customLimiter, err := ratelimiter.Create(string(limiterType), requestsPerSecond)
+		if err != nil {
+			// If custom algorithm creation fails, log and fall back to token bucket
+			fmt.Printf("Failed to create custom algorithm '%s': %v. Falling back to token bucket.\n", limiterType, err)
+			return NewTokenBucketLimiter(requestsPerSecond)
+		}
+		return NewCustomRateLimiterAdapter(customLimiter)
+	}
+
+	// Handle built-in algorithms
 	switch limiterType {
 	case config.TokenBucket:
 		return NewTokenBucketLimiter(requestsPerSecond)
@@ -303,4 +338,56 @@ func NewRateLimiter(limiterType config.RateLimiterType, requestsPerSecond float6
 	default:
 		return NewTokenBucketLimiter(requestsPerSecond)
 	}
+}
+
+// IsCustomAlgorithm checks if the given algorithm name is a registered custom algorithm
+func IsCustomAlgorithm(algorithmName string) bool {
+	// Check if it's one of the built-in algorithms
+	builtInAlgorithms := map[string]bool{
+		string(config.TokenBucket):          true,
+		string(config.LeakyBucket):          true,
+		string(config.FixedWindow):          true,
+		string(config.SlidingWindowLog):     true,
+		string(config.SlidingWindowCounter): true,
+	}
+
+	// If it's not a built-in algorithm, check if it's registered as custom
+	if !builtInAlgorithms[algorithmName] {
+		return ratelimiter.IsRegistered(algorithmName)
+	}
+
+	return false
+}
+
+// ListCustomAlgorithms returns a list of all registered custom algorithms
+func ListCustomAlgorithms() []string {
+	return ratelimiter.List()
+}
+
+// ValidateAlgorithm validates if the given algorithm name is supported (built-in or custom)
+func ValidateAlgorithm(algorithmName string) error {
+	// Check built-in algorithms
+	builtInAlgorithms := []string{
+		string(config.TokenBucket),
+		string(config.LeakyBucket),
+		string(config.FixedWindow),
+		string(config.SlidingWindowLog),
+		string(config.SlidingWindowCounter),
+	}
+
+	for _, builtIn := range builtInAlgorithms {
+		if algorithmName == builtIn {
+			return nil
+		}
+	}
+
+	// Check custom algorithms
+	if ratelimiter.IsRegistered(algorithmName) {
+		return nil
+	}
+
+	// Build error message with available algorithms
+	available := append(builtInAlgorithms, ratelimiter.List()...)
+	return fmt.Errorf("unsupported algorithm '%s'. Available algorithms: %s",
+		algorithmName, strings.Join(available, ", "))
 }
