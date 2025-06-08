@@ -73,49 +73,57 @@ run-live: build ## Run with live statistics
 # Testing targets
 .PHONY: test
 test: ## Run all tests
-	$(GOTEST) -v ./test/...
+	$(GOTEST) -v -timeout=60s ./test/...
 
 .PHONY: test-unit
 test-unit: ## Run unit tests only
-	$(GOTEST) -v -run="^Test.*" ./test/config_test.go ./test/stats_test.go ./test/limiter_test.go
+	$(GOTEST) -v -timeout=30s -run="^Test.*" ./test/config_test.go ./test/stats_test.go ./test/limiter_test.go ./test/main_test.go ./test/custom_algorithm_test.go
 
 .PHONY: test-integration
 test-integration: ## Run integration tests only
-	$(GOTEST) -v -run="^TestIntegration.*|^TestEndToEnd.*|^TestComponent.*|^TestAllAlgorithms.*|^TestHighConcurrency.*|^TestError.*|^TestStats.*|^TestConfig.*Integration|^TestEnvironment.*" ./test/integration_test.go
+	$(GOTEST) -v -timeout=120s -run="^TestIntegration.*|^TestEndToEnd.*|^TestComponent.*|^TestAllAlgorithms.*|^TestHighConcurrency.*|^TestError.*|^TestStats.*|^TestConfig.*Integration|^TestEnvironment.*" ./test/integration_test.go
 
 .PHONY: test-tester
 test-tester: ## Run tester package tests
-	$(GOTEST) -v ./test/tester_test.go
+	$(GOTEST) -v -timeout=60s ./test/tester_test.go
+
+.PHONY: test-main
+test-main: ## Run main package tests
+	$(GOTEST) -v -timeout=30s ./test/main_test.go
+
+.PHONY: test-custom
+test-custom: ## Run custom algorithm tests
+	$(GOTEST) -v -timeout=30s ./test/custom_algorithm_test.go
 
 .PHONY: test-short
 test-short: ## Run tests with short flag (skip long running tests)
-	$(GOTEST) -v -short ./test/...
+	$(GOTEST) -v -short -timeout=30s ./test/...
 
 .PHONY: test-coverage
 test-coverage: ## Run tests with coverage
-	$(GOTEST) -v -coverprofile=coverage.out ./test/...
+	$(GOTEST) -v -timeout=60s -coverprofile=coverage.out ./test/...
 	$(GOCMD) tool cover -html=coverage.out -o coverage.html
 	@echo "Coverage report generated: coverage.html"
 
 .PHONY: test-coverage-detailed
 test-coverage-detailed: ## Run tests with detailed coverage per package
 	@echo "Running coverage for all packages..."
-	@for pkg in config limiter stats tester; do \
-		echo "Testing internal/$$pkg..."; \
-		$(GOTEST) -v -coverprofile=coverage-$$pkg.out ./test/$${pkg}_test.go; \
+	@for pkg in config limiter stats tester main custom_algorithm; do \
+		echo "Testing $$pkg..."; \
+		$(GOTEST) -v -timeout=30s -coverprofile=coverage-$$pkg.out ./test/$${pkg}_test.go; \
 		if [ -f coverage-$$pkg.out ]; then \
 			$(GOCMD) tool cover -html=coverage-$$pkg.out -o coverage-$$pkg.html; \
 			$(GOCMD) tool cover -func=coverage-$$pkg.out | tail -1; \
 		fi; \
 	done
 	@echo "Integration test coverage..."
-	$(GOTEST) -v -coverprofile=coverage-integration.out ./test/integration_test.go
+	$(GOTEST) -v -timeout=120s -coverprofile=coverage-integration.out ./test/integration_test.go
 	$(GOCMD) tool cover -html=coverage-integration.out -o coverage-integration.html
 	$(GOCMD) tool cover -func=coverage-integration.out | tail -1
 
 .PHONY: test-race
 test-race: ## Run tests with race detection
-	$(GOTEST) -v -race ./test/...
+	$(GOTEST) -v -timeout=90s -race ./test/...
 
 .PHONY: test-timeout
 test-timeout: ## Run tests with timeout
@@ -123,27 +131,27 @@ test-timeout: ## Run tests with timeout
 
 .PHONY: bench
 bench: ## Run benchmarks
-	$(GOTEST) -bench=. -benchmem ./test/...
+	$(GOTEST) -bench=. -benchmem -timeout=120s ./test/...
 
 .PHONY: bench-limiter
 bench-limiter: ## Run benchmarks for rate limiters only
-	$(GOTEST) -bench=BenchmarkTokenBucket -benchmem ./test/limiter_test.go
-	$(GOTEST) -bench=BenchmarkLeakyBucket -benchmem ./test/limiter_test.go
-	$(GOTEST) -bench=BenchmarkFixedWindow -benchmem ./test/limiter_test.go
-	$(GOTEST) -bench=BenchmarkSlidingWindow -benchmem ./test/limiter_test.go
+	$(GOTEST) -bench=BenchmarkTokenBucket -benchmem -timeout=60s ./test/limiter_test.go
+	$(GOTEST) -bench=BenchmarkLeakyBucket -benchmem -timeout=60s ./test/limiter_test.go
+	$(GOTEST) -bench=BenchmarkFixedWindow -benchmem -timeout=60s ./test/limiter_test.go
+	$(GOTEST) -bench=BenchmarkSlidingWindow -benchmem -timeout=60s ./test/limiter_test.go
 
 .PHONY: bench-compare
 bench-compare: ## Compare benchmark results across algorithms
-	$(GOTEST) -bench=. -benchmem ./test/limiter_test.go > bench-results.txt
+	$(GOTEST) -bench=. -benchmem -timeout=120s ./test/limiter_test.go > bench-results.txt
 	@echo "Benchmark results saved to bench-results.txt"
 
 .PHONY: test-verbose
 test-verbose: ## Run tests with verbose output and detailed logs
-	$(GOTEST) -v -count=1 ./test/... -args -test.v
+	$(GOTEST) -v -timeout=60s -count=1 ./test/... -args -test.v
 
 .PHONY: test-profile
 test-profile: ## Run tests with CPU profiling
-	$(GOTEST) -v -cpuprofile=cpu.prof -memprofile=mem.prof ./test/...
+	$(GOTEST) -v -timeout=120s -cpuprofile=cpu.prof -memprofile=mem.prof ./test/...
 	@echo "CPU profile: cpu.prof, Memory profile: mem.prof"
 
 # Code quality targets

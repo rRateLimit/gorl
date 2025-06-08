@@ -118,8 +118,8 @@ func TestRateLimitTesterBasicFunctionality(t *testing.T) {
 
 	cfg := &config.Config{
 		URL:               testServer.URL() + "/test",
-		RequestsPerSecond: 10.0, // High rate for quick test
-		Duration:          2 * time.Second,
+		RequestsPerSecond: 20.0,            // Higher rate for quicker test
+		Duration:          1 * time.Second, // Reduced duration
 		Concurrency:       1,
 		Algorithm:         config.TokenBucket,
 		Method:            "GET",
@@ -225,16 +225,16 @@ func TestRateLimitTesterWithSlowServer(t *testing.T) {
 	defer testServer.Close()
 
 	// Add delay to simulate slow server
-	testServer.SetDelay("/slow", 200*time.Millisecond)
+	testServer.SetDelay("/slow", 100*time.Millisecond) // Reduced delay
 
 	cfg := &config.Config{
 		URL:               testServer.URL() + "/slow",
-		RequestsPerSecond: 10.0, // High rate
+		RequestsPerSecond: 15.0, // Higher rate
 		Duration:          1 * time.Second,
 		Concurrency:       1,
 		Algorithm:         config.TokenBucket,
 		Method:            "GET",
-		HTTPTimeout:       500 * time.Millisecond, // Longer than delay
+		HTTPTimeout:       300 * time.Millisecond, // Longer than delay
 	}
 
 	cfg.SetDefaults()
@@ -263,9 +263,9 @@ func TestRateLimitTesterWithSlowServer(t *testing.T) {
 		t.Error("Expected non-zero response times")
 	}
 
-	// Response time should reflect the server delay
-	if stats.MinResponseTime < 150*time.Millisecond {
-		t.Errorf("Expected response time >= 150ms due to server delay, got %v", stats.MinResponseTime)
+	// Response time should reflect the server delay (100ms delay, allow some variance)
+	if stats.MinResponseTime < 80*time.Millisecond {
+		t.Errorf("Expected response time >= 80ms due to server delay, got %v", stats.MinResponseTime)
 	}
 }
 
@@ -319,9 +319,9 @@ func TestRateLimitTesterConcurrency(t *testing.T) {
 
 	cfg := &config.Config{
 		URL:               testServer.URL() + "/concurrent",
-		RequestsPerSecond: 20.0, // High rate
-		Duration:          2 * time.Second,
-		Concurrency:       3, // Multiple workers
+		RequestsPerSecond: 30.0,            // Higher rate
+		Duration:          1 * time.Second, // Reduced duration
+		Concurrency:       3,               // Multiple workers
 		Algorithm:         config.TokenBucket,
 		Method:            "GET",
 	}

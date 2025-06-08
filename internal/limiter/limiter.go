@@ -178,42 +178,46 @@ func NewSlidingWindowLogLimiter(requestsPerSecond float64) *SlidingWindowLogLimi
 }
 
 func (s *SlidingWindowLogLimiter) Allow(ctx context.Context) error {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
+	for {
+		s.mutex.Lock()
 
-	now := time.Now()
-	windowStart := now.Add(-s.windowSize)
+		now := time.Now()
+		windowStart := now.Add(-s.windowSize)
 
-	// Remove old requests outside the window
-	validRequests := make([]time.Time, 0)
-	for _, reqTime := range s.requestTimes {
-		if reqTime.After(windowStart) {
-			validRequests = append(validRequests, reqTime)
-		}
-	}
-	s.requestTimes = validRequests
-
-	// Check if we can make another request
-	if len(s.requestTimes) >= s.maxRequests {
-		// Find the oldest request and wait until it's outside the window
-		oldestRequest := s.requestTimes[0]
-		waitTime := oldestRequest.Add(s.windowSize).Sub(now)
-
-		if waitTime > 0 {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case <-time.After(waitTime):
+		// Remove old requests outside the window
+		validRequests := make([]time.Time, 0)
+		for _, reqTime := range s.requestTimes {
+			if reqTime.After(windowStart) {
+				validRequests = append(validRequests, reqTime)
 			}
 		}
+		s.requestTimes = validRequests
 
-		// Retry the check after waiting
-		return s.Allow(ctx)
+		// Check if we can make another request
+		if len(s.requestTimes) >= s.maxRequests {
+			// Find the oldest request and wait until it's outside the window
+			oldestRequest := s.requestTimes[0]
+			waitTime := oldestRequest.Add(s.windowSize).Sub(now)
+
+			s.mutex.Unlock() // Unlock before waiting
+
+			if waitTime > 0 {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-time.After(waitTime):
+					// Continue to retry
+				}
+			}
+			// Continue the loop to retry
+			continue
+		}
+
+		// Add current request to log
+		s.requestTimes = append(s.requestTimes, now)
+		s.mutex.Unlock()
+		return nil
 	}
-
-	// Add current request to log
-	s.requestTimes = append(s.requestTimes, now)
-	return nil
 }
 
 func (s *SlidingWindowLogLimiter) String() string {
@@ -249,39 +253,43 @@ func NewSlidingWindowCounterLimiter(requestsPerSecond float64) *SlidingWindowCou
 }
 
 func (s *SlidingWindowCounterLimiter) Allow(ctx context.Context) error {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
+	for {
+		s.mutex.Lock()
 
-	now := time.Now()
-	s.updateCounters(now)
+		now := time.Now()
+		s.updateCounters(now)
 
-	// Calculate total requests in current window
-	totalRequests := 0
-	for _, count := range s.counters {
-		totalRequests += count
-	}
-
-	// Check if we can make another request
-	if totalRequests >= s.maxRequests {
-		// Wait for the next sub-window
-		nextSubWindow := s.lastUpdateTime.Add(s.subWindowSize)
-		waitTime := nextSubWindow.Sub(now)
-
-		if waitTime > 0 {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case <-time.After(waitTime):
-			}
+		// Calculate total requests in current window
+		totalRequests := 0
+		for _, count := range s.counters {
+			totalRequests += count
 		}
 
-		// Retry after waiting
-		return s.Allow(ctx)
-	}
+		// Check if we can make another request
+		if totalRequests >= s.maxRequests {
+			// Wait for the next sub-window
+			nextSubWindow := s.lastUpdateTime.Add(s.subWindowSize)
+			waitTime := nextSubWindow.Sub(now)
 
-	// Increment counter for current sub-window
-	s.counters[s.currentSubWindow]++
-	return nil
+			s.mutex.Unlock() // Unlock before waiting
+
+			if waitTime > 0 {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-time.After(waitTime):
+					// Continue to retry
+				}
+			}
+			// Continue the loop to retry
+			continue
+		}
+
+		// Increment counter for current sub-window
+		s.counters[s.currentSubWindow]++
+		s.mutex.Unlock()
+		return nil
+	}
 }
 
 func (s *SlidingWindowCounterLimiter) updateCounters(now time.Time) {

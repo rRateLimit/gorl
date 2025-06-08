@@ -24,8 +24,8 @@ func TestEndToEndBasicFlow(t *testing.T) {
 	// Create a configuration
 	cfg := &config.Config{
 		URL:               testServer.URL() + "/integration",
-		RequestsPerSecond: 5.0,
-		Duration:          2 * time.Second,
+		RequestsPerSecond: 10.0,            // Higher rate for faster test
+		Duration:          1 * time.Second, // Reduced duration
 		Concurrency:       2,
 		Algorithm:         config.TokenBucket,
 		Method:            "GET",
@@ -274,8 +274,8 @@ func TestAllAlgorithmsIntegration(t *testing.T) {
 		t.Run(string(algorithm), func(t *testing.T) {
 			cfg := &config.Config{
 				URL:               testServer.URL() + "/algo/" + string(algorithm),
-				RequestsPerSecond: 6.0,
-				Duration:          2 * time.Second,
+				RequestsPerSecond: 15.0,            // Higher rate
+				Duration:          1 * time.Second, // Reduced duration
 				Concurrency:       1,
 				Algorithm:         algorithm,
 				Method:            "GET",
@@ -319,6 +319,11 @@ func TestAllAlgorithmsIntegration(t *testing.T) {
 			minExpected := expectedRequests * 0.5
 			maxExpected := expectedRequests * 1.5
 
+			// Fixed window can process more requests if test spans window boundaries
+			if algorithm == config.FixedWindow {
+				maxExpected = expectedRequests * 2.5 // Allow up to 2.5x for fixed window
+			}
+
 			if float64(finalStats.TotalRequests) < minExpected ||
 				float64(finalStats.TotalRequests) > maxExpected {
 				t.Errorf("Algorithm %s request count unreasonable: got %d, expected ~%.0f",
@@ -335,9 +340,9 @@ func TestHighConcurrencyIntegration(t *testing.T) {
 
 	cfg := &config.Config{
 		URL:               testServer.URL() + "/concurrent",
-		RequestsPerSecond: 20.0,
-		Duration:          3 * time.Second,
-		Concurrency:       5, // High concurrency
+		RequestsPerSecond: 40.0,            // Higher rate
+		Duration:          1 * time.Second, // Reduced duration
+		Concurrency:       5,               // High concurrency
 		Algorithm:         config.TokenBucket,
 		Method:            "GET",
 	}
