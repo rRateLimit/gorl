@@ -1,0 +1,29 @@
+# Global owners
+* @rRateLimit/maintainers
+
+# CI/CD workflows
+/.github/ @rRateLimit/maintainers
+
+# Core rate limiting logic
+/internal/limiter/ @rRateLimit/maintainers
+/pkg/ratelimiter/ @rRateLimit/maintainers
+
+# Configuration and stats
+/internal/config/ @rRateLimit/maintainers
+/internal/stats/ @rRateLimit/maintainers
+
+# Testing infrastructure
+/test/ @rRateLimit/maintainers
+
+# Documentation
+*.md @rRateLimit/maintainers
+/docs/ @rRateLimit/maintainers
+
+# Build and deployment
+Dockerfile @rRateLimit/maintainers
+Makefile @rRateLimit/maintainers
+go.mod @rRateLimit/maintainers
+go.sum @rRateLimit/maintainers
+
+# Linting configuration
+.golangci.yml @rRateLimit/maintainers

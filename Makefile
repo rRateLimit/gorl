@@ -154,21 +154,68 @@ test-profile: ## Run tests with CPU profiling
 	$(GOTEST) -v -timeout=120s -cpuprofile=cpu.prof -memprofile=mem.prof ./test/...
 	@echo "CPU profile: cpu.prof, Memory profile: mem.prof"
 
-# Code quality targets
+# Linting and code quality targets
+.PHONY: lint
+lint: ## Run golangci-lint
+	golangci-lint run
+
+.PHONY: lint-fix
+lint-fix: ## Run golangci-lint with autofix
+	golangci-lint run --fix
+
 .PHONY: fmt
-fmt: ## Format Go code
-	$(GOFMT) -s -w .
+fmt: ## Format code with gofumpt
+	gofumpt -l -w .
+
+.PHONY: imports
+imports: ## Fix imports with goimports
+	goimports -local github.com/rRateLimit/gorl -w .
 
 .PHONY: vet
 vet: ## Run go vet
 	$(GOCMD) vet ./...
 
-.PHONY: lint
-lint: ## Run golangci-lint (requires golangci-lint to be installed)
-	golangci-lint run
+.PHONY: tidy
+tidy: ## Tidy dependencies
+	$(GOCMD) mod tidy
+	$(GOCMD) mod verify
 
 .PHONY: check
-check: fmt vet test ## Run all code quality checks
+check: fmt imports vet lint ## Run all code quality checks
+
+# Security and vulnerability checks
+.PHONY: sec
+sec: ## Run security checks
+	gosec ./...
+
+.PHONY: vuln
+vuln: ## Check for vulnerabilities
+	govulncheck ./...
+
+.PHONY: deps-update
+deps-update: ## Update dependencies
+	$(GOCMD) get -u ./...
+	$(GOCMD) mod tidy
+
+.PHONY: deps-check
+deps-check: ## Check for dependency issues
+	$(GOCMD) mod verify
+	$(GOCMD) list -m -u all
+
+# CI related targets
+.PHONY: ci-setup
+ci-setup: ## Install CI dependencies
+	$(GOCMD) install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+	$(GOCMD) install github.com/securecodewarrior/sast-scan/gosec@latest
+	$(GOCMD) install golang.org/x/vuln/cmd/govulncheck@latest
+	$(GOCMD) install mvdan.cc/gofumpt@latest
+	$(GOCMD) install golang.org/x/tools/cmd/goimports@latest
+
+.PHONY: ci-test
+ci-test: check test-coverage ## Run all CI checks and tests
+
+.PHONY: pre-commit
+pre-commit: check test-unit ## Run pre-commit checks
 
 # Cleaning targets
 .PHONY: clean
@@ -176,6 +223,8 @@ clean: ## Clean build artifacts
 	$(GOCLEAN)
 	rm -rf $(BUILD_DIR)
 	rm -f coverage.out coverage.html
+	rm -f *.out *.prof *.html bench-results.txt
+	rm -f gorl-*
 
 .PHONY: clean-all
 clean-all: clean ## Clean everything including dependencies
