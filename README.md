@@ -99,20 +99,82 @@ GoRL supports multiple rate limiting algorithms, each with different characteris
 - **Pros**: Good accuracy, reasonable memory usage
 - **Cons**: More complex than fixed window
 
+## Timeout Configuration
+
+GoRL provides detailed timeout configuration options to handle various network conditions:
+
+### Timeout Types
+
+1. **HTTP Timeout** (`-http-timeout`): Overall timeout for the entire HTTP request
+
+   - Default: 30s
+   - Controls the maximum time for a complete request/response cycle
+
+2. **Connect Timeout** (`-connect-timeout`): Timeout for establishing TCP connection
+
+   - Default: 10s
+   - Controls how long to wait for the initial TCP connection
+
+3. **TLS Handshake Timeout** (`-tls-handshake-timeout`): Timeout for TLS/SSL handshake
+
+   - Default: 10s
+   - Controls the maximum time for TLS negotiation
+
+4. **Response Header Timeout** (`-response-header-timeout`): Timeout for receiving response headers
+   - Default: 10s
+   - Controls how long to wait for the server to send response headers
+
+### Usage Examples
+
+```bash
+# Quick timeout for fast APIs
+./gorl -url=https://api.example.com -rate=10 -http-timeout=5s -connect-timeout=2s
+
+# Longer timeouts for slow endpoints
+./gorl -url=https://slow-api.example.com -rate=2 -http-timeout=60s -response-header-timeout=30s
+
+# Strict timeouts for testing
+./gorl -url=https://api.example.com -rate=5 -connect-timeout=1s -tls-handshake-timeout=2s
+```
+
+### Environment Variables
+
+All timeout settings can also be configured via environment variables:
+
+```bash
+export GORL_HTTP_TIMEOUT=20s
+export GORL_CONNECT_TIMEOUT=5s
+export GORL_TLS_HANDSHAKE_TIMEOUT=5s
+export GORL_RESPONSE_HEADER_TIMEOUT=10s
+./gorl -url=https://api.example.com -rate=10
+```
+
 ## Options
 
-| Option         | Description                                   | Default      |
-| -------------- | --------------------------------------------- | ------------ |
-| `-url`         | Target URL to test (required)                 | -            |
-| `-rate`        | Requests per second                           | 1.0          |
-| `-algorithm`   | Rate limiting algorithm                       | token-bucket |
-| `-duration`    | Test execution duration                       | 10s          |
-| `-concurrency` | Number of concurrent workers                  | 1            |
-| `-method`      | HTTP method                                   | GET          |
-| `-headers`     | HTTP headers (key1:value1,key2:value2 format) | -            |
-| `-body`        | Request body                                  | -            |
-| `-config`      | Configuration file path                       | -            |
-| `-help`        | Show help message                             | -            |
+| Option                     | Description                                   | Default      |
+| -------------------------- | --------------------------------------------- | ------------ |
+| `-url`                     | Target URL to test (required)                 | -            |
+| `-rate`                    | Requests per second                           | 1.0          |
+| `-algorithm`               | Rate limiting algorithm                       | token-bucket |
+| `-duration`                | Test execution duration                       | 10s          |
+| `-concurrency`             | Number of concurrent workers                  | 1            |
+| `-method`                  | HTTP method                                   | GET          |
+| `-headers`                 | HTTP headers (key1:value1,key2:value2 format) | -            |
+| `-body`                    | Request body                                  | -            |
+| `-config`                  | Configuration file path                       | -            |
+| `-http-timeout`            | HTTP request timeout                          | 30s          |
+| `-connect-timeout`         | TCP connection timeout                        | 10s          |
+| `-tls-handshake-timeout`   | TLS handshake timeout                         | 10s          |
+| `-response-header-timeout` | Response header timeout                       | 10s          |
+| `-tcp-keep-alive`          | Enable TCP keep-alive                         | true         |
+| `-tcp-keep-alive-period`   | TCP keep-alive period                         | 30s          |
+| `-disable-keep-alives`     | Disable HTTP keep-alives                      | false        |
+| `-max-idle-conns`          | Maximum idle connections                      | 100          |
+| `-max-idle-conns-per-host` | Maximum idle connections per host             | 10           |
+| `-live`                    | Show live statistics                          | false        |
+| `-compact`                 | Show compact one-line statistics              | false        |
+| `-report-interval`         | Statistics report interval                    | 2s           |
+| `-help`                    | Show help message                             | -            |
 
 ### Available Algorithms
 

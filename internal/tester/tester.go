@@ -42,12 +42,14 @@ func NewRateLimitTester(cfg *config.Config, opts TesterOptions) *RateLimitTester
 
 	// Create HTTP client with custom transport
 	transport := &http.Transport{
-		MaxIdleConns:        cfg.MaxIdleConns,
-		MaxIdleConnsPerHost: cfg.MaxIdleConnsPerHost,
-		IdleConnTimeout:     90 * time.Second,
-		DisableKeepAlives:   cfg.DisableKeepAlives,
+		MaxIdleConns:          cfg.MaxIdleConns,
+		MaxIdleConnsPerHost:   cfg.MaxIdleConnsPerHost,
+		IdleConnTimeout:       90 * time.Second,
+		DisableKeepAlives:     cfg.DisableKeepAlives,
+		TLSHandshakeTimeout:   cfg.TLSHandshakeTimeout,
+		ResponseHeaderTimeout: cfg.ResponseHeaderTimeout,
 		DialContext: (&net.Dialer{
-			Timeout: 30 * time.Second,
+			Timeout: cfg.ConnectTimeout,
 			KeepAlive: func() time.Duration {
 				if cfg.TCPKeepAlive {
 					return cfg.TCPKeepAlivePeriod
@@ -158,6 +160,9 @@ func (r *RateLimitTester) printHeader() {
 
 	// Print HTTP/TCP settings
 	fmt.Printf("HTTP Timeout: %v\n", r.config.HTTPTimeout)
+	fmt.Printf("Connect Timeout: %v\n", r.config.ConnectTimeout)
+	fmt.Printf("TLS Handshake Timeout: %v\n", r.config.TLSHandshakeTimeout)
+	fmt.Printf("Response Header Timeout: %v\n", r.config.ResponseHeaderTimeout)
 	fmt.Printf("TCP Keep-Alive: %v", r.config.TCPKeepAlive)
 	if r.config.TCPKeepAlive {
 		fmt.Printf(" (period: %v)", r.config.TCPKeepAlivePeriod)

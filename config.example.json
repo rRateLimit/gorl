@@ -12,6 +12,9 @@
   "body": "",
 
   "httpTimeout": "30s",
+  "connectTimeout": "10s",
+  "tlsHandshakeTimeout": "10s",
+  "responseHeaderTimeout": "10s",
   "tcpKeepAlive": true,
   "tcpKeepAlivePeriod": "30s",
   "disableKeepAlives": false,

@@ -32,22 +32,28 @@ type Config struct {
 	Algorithm         RateLimiterType   `json:"algorithm"`         // rate limiting algorithm
 
 	// HTTP/TCP settings
-	HTTPTimeout         time.Duration `json:"httpTimeout"`         // HTTP request timeout
-	TCPKeepAlive        bool          `json:"tcpKeepAlive"`        // TCP keep-alive
-	TCPKeepAlivePeriod  time.Duration `json:"tcpKeepAlivePeriod"`  // TCP keep-alive period
-	DisableKeepAlives   bool          `json:"disableKeepAlives"`   // Disable HTTP keep-alives
-	MaxIdleConns        int           `json:"maxIdleConns"`        // Maximum idle connections
-	MaxIdleConnsPerHost int           `json:"maxIdleConnsPerHost"` // Maximum idle connections per host
+	HTTPTimeout           time.Duration `json:"httpTimeout"`           // HTTP request timeout
+	ConnectTimeout        time.Duration `json:"connectTimeout"`        // TCP connection timeout
+	TLSHandshakeTimeout   time.Duration `json:"tlsHandshakeTimeout"`   // TLS handshake timeout
+	ResponseHeaderTimeout time.Duration `json:"responseHeaderTimeout"` // Response header timeout
+	TCPKeepAlive          bool          `json:"tcpKeepAlive"`          // TCP keep-alive
+	TCPKeepAlivePeriod    time.Duration `json:"tcpKeepAlivePeriod"`    // TCP keep-alive period
+	DisableKeepAlives     bool          `json:"disableKeepAlives"`     // Disable HTTP keep-alives
+	MaxIdleConns          int           `json:"maxIdleConns"`          // Maximum idle connections
+	MaxIdleConnsPerHost   int           `json:"maxIdleConnsPerHost"`   // Maximum idle connections per host
 }
 
 // UnmarshalJSON implements custom JSON unmarshaling for Config
 func (c *Config) UnmarshalJSON(data []byte) error {
 	type Alias Config
 	aux := &struct {
-		Duration           string `json:"duration"`
-		Algorithm          string `json:"algorithm"`
-		HTTPTimeout        string `json:"httpTimeout"`
-		TCPKeepAlivePeriod string `json:"tcpKeepAlivePeriod"`
+		Duration              string `json:"duration"`
+		Algorithm             string `json:"algorithm"`
+		HTTPTimeout           string `json:"httpTimeout"`
+		ConnectTimeout        string `json:"connectTimeout"`
+		TLSHandshakeTimeout   string `json:"tlsHandshakeTimeout"`
+		ResponseHeaderTimeout string `json:"responseHeaderTimeout"`
+		TCPKeepAlivePeriod    string `json:"tcpKeepAlivePeriod"`
 		*Alias
 	}{
 		Alias: (*Alias)(c),
@@ -75,6 +81,30 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 			return fmt.Errorf("invalid httpTimeout format: %v", err)
 		}
 		c.HTTPTimeout = timeout
+	}
+
+	if aux.ConnectTimeout != "" {
+		timeout, err := time.ParseDuration(aux.ConnectTimeout)
+		if err != nil {
+			return fmt.Errorf("invalid connectTimeout format: %v", err)
+		}
+		c.ConnectTimeout = timeout
+	}
+
+	if aux.TLSHandshakeTimeout != "" {
+		timeout, err := time.ParseDuration(aux.TLSHandshakeTimeout)
+		if err != nil {
+			return fmt.Errorf("invalid tlsHandshakeTimeout format: %v", err)
+		}
+		c.TLSHandshakeTimeout = timeout
+	}
+
+	if aux.ResponseHeaderTimeout != "" {
+		timeout, err := time.ParseDuration(aux.ResponseHeaderTimeout)
+		if err != nil {
+			return fmt.Errorf("invalid responseHeaderTimeout format: %v", err)
+		}
+		c.ResponseHeaderTimeout = timeout
 	}
 
 	if aux.TCPKeepAlivePeriod != "" {
@@ -109,24 +139,28 @@ func LoadFromFile(filename string) (*Config, error) {
 // LoadFromFlags creates configuration from command line flags
 func LoadFromFlags(url string, rate float64, algorithm string, duration time.Duration,
 	concurrency int, method string, headers string, body string,
-	httpTimeout time.Duration, tcpKeepAlive bool, tcpKeepAlivePeriod time.Duration,
+	httpTimeout time.Duration, connectTimeout time.Duration, tlsHandshakeTimeout time.Duration,
+	responseHeaderTimeout time.Duration, tcpKeepAlive bool, tcpKeepAlivePeriod time.Duration,
 	disableKeepAlives bool, maxIdleConns int, maxIdleConnsPerHost int) *Config {
 
 	config := &Config{
-		URL:                 url,
-		RequestsPerSecond:   rate,
-		Algorithm:           RateLimiterType(algorithm),
-		Duration:            duration,
-		Concurrency:         concurrency,
-		Method:              strings.ToUpper(method),
-		Headers:             parseHeaders(headers),
-		Body:                body,
-		HTTPTimeout:         httpTimeout,
-		TCPKeepAlive:        tcpKeepAlive,
-		TCPKeepAlivePeriod:  tcpKeepAlivePeriod,
-		DisableKeepAlives:   disableKeepAlives,
-		MaxIdleConns:        maxIdleConns,
-		MaxIdleConnsPerHost: maxIdleConnsPerHost,
+		URL:                   url,
+		RequestsPerSecond:     rate,
+		Algorithm:             RateLimiterType(algorithm),
+		Duration:              duration,
+		Concurrency:           concurrency,
+		Method:                strings.ToUpper(method),
+		Headers:               parseHeaders(headers),
+		Body:                  body,
+		HTTPTimeout:           httpTimeout,
+		ConnectTimeout:        connectTimeout,
+		TLSHandshakeTimeout:   tlsHandshakeTimeout,
+		ResponseHeaderTimeout: responseHeaderTimeout,
+		TCPKeepAlive:          tcpKeepAlive,
+		TCPKeepAlivePeriod:    tcpKeepAlivePeriod,
+		DisableKeepAlives:     disableKeepAlives,
+		MaxIdleConns:          maxIdleConns,
+		MaxIdleConnsPerHost:   maxIdleConnsPerHost,
 	}
 
 	// Apply environment variable overrides
@@ -142,6 +176,15 @@ func (c *Config) SetDefaults() {
 	}
 	if c.HTTPTimeout == 0 {
 		c.HTTPTimeout = 30 * time.Second
+	}
+	if c.ConnectTimeout == 0 {
+		c.ConnectTimeout = 10 * time.Second
+	}
+	if c.TLSHandshakeTimeout == 0 {
+		c.TLSHandshakeTimeout = 10 * time.Second
+	}
+	if c.ResponseHeaderTimeout == 0 {
+		c.ResponseHeaderTimeout = 10 * time.Second
 	}
 	if c.TCPKeepAlivePeriod == 0 {
 		c.TCPKeepAlivePeriod = 30 * time.Second
@@ -220,6 +263,21 @@ func applyEnvironmentOverrides(config *Config) {
 	if timeout := os.Getenv("GORL_HTTP_TIMEOUT"); timeout != "" {
 		if t, err := time.ParseDuration(timeout); err == nil {
 			config.HTTPTimeout = t
+		}
+	}
+	if timeout := os.Getenv("GORL_CONNECT_TIMEOUT"); timeout != "" {
+		if t, err := time.ParseDuration(timeout); err == nil {
+			config.ConnectTimeout = t
+		}
+	}
+	if timeout := os.Getenv("GORL_TLS_HANDSHAKE_TIMEOUT"); timeout != "" {
+		if t, err := time.ParseDuration(timeout); err == nil {
+			config.TLSHandshakeTimeout = t
+		}
+	}
+	if timeout := os.Getenv("GORL_RESPONSE_HEADER_TIMEOUT"); timeout != "" {
+		if t, err := time.ParseDuration(timeout); err == nil {
+			config.ResponseHeaderTimeout = t
 		}
 	}
 	if keepAlive := os.Getenv("GORL_TCP_KEEP_ALIVE"); keepAlive != "" {

@@ -127,6 +127,9 @@ func TestEnvironmentOverrides(t *testing.T) {
 	os.Setenv("GORL_HEADERS", "Content-Type:application/json,Authorization:Bearer token")
 	os.Setenv("GORL_BODY", "test body")
 	os.Setenv("GORL_HTTP_TIMEOUT", "45s")
+	os.Setenv("GORL_CONNECT_TIMEOUT", "15s")
+	os.Setenv("GORL_TLS_HANDSHAKE_TIMEOUT", "20s")
+	os.Setenv("GORL_RESPONSE_HEADER_TIMEOUT", "25s")
 	os.Setenv("GORL_TCP_KEEP_ALIVE", "false")
 	os.Setenv("GORL_TCP_KEEP_ALIVE_PERIOD", "60s")
 	os.Setenv("GORL_DISABLE_KEEP_ALIVES", "true")
@@ -144,6 +147,9 @@ func TestEnvironmentOverrides(t *testing.T) {
 		os.Unsetenv("GORL_HEADERS")
 		os.Unsetenv("GORL_BODY")
 		os.Unsetenv("GORL_HTTP_TIMEOUT")
+		os.Unsetenv("GORL_CONNECT_TIMEOUT")
+		os.Unsetenv("GORL_TLS_HANDSHAKE_TIMEOUT")
+		os.Unsetenv("GORL_RESPONSE_HEADER_TIMEOUT")
 		os.Unsetenv("GORL_TCP_KEEP_ALIVE")
 		os.Unsetenv("GORL_TCP_KEEP_ALIVE_PERIOD")
 		os.Unsetenv("GORL_DISABLE_KEEP_ALIVES")
@@ -152,7 +158,8 @@ func TestEnvironmentOverrides(t *testing.T) {
 	}()
 
 	cfg := config.LoadFromFlags("https://default.com", 1.0, "token-bucket", 10*time.Second,
-		1, "GET", "", "", 30*time.Second, true, 30*time.Second, false, 100, 10)
+		1, "GET", "", "", 30*time.Second, 10*time.Second, 10*time.Second, 10*time.Second,
+		true, 30*time.Second, false, 100, 10)
 
 	if cfg.URL != "https://test.example.com" {
 		t.Errorf("Expected URL to be overridden by env var, got %s", cfg.URL)
@@ -192,6 +199,18 @@ func TestEnvironmentOverrides(t *testing.T) {
 
 	if cfg.HTTPTimeout != 45*time.Second {
 		t.Errorf("Expected HTTP timeout to be 45s, got %v", cfg.HTTPTimeout)
+	}
+
+	if cfg.ConnectTimeout != 15*time.Second {
+		t.Errorf("Expected Connect timeout to be 15s, got %v", cfg.ConnectTimeout)
+	}
+
+	if cfg.TLSHandshakeTimeout != 20*time.Second {
+		t.Errorf("Expected TLS Handshake timeout to be 20s, got %v", cfg.TLSHandshakeTimeout)
+	}
+
+	if cfg.ResponseHeaderTimeout != 25*time.Second {
+		t.Errorf("Expected Response Header timeout to be 25s, got %v", cfg.ResponseHeaderTimeout)
 	}
 
 	if cfg.TCPKeepAlive != false {
@@ -266,5 +285,40 @@ func TestConfigJSONUnmarshaling(t *testing.T) {
 
 	if cfg.TCPKeepAlivePeriod != 60*time.Second {
 		t.Errorf("Expected TCP keep-alive period to be 60s, got %v", cfg.TCPKeepAlivePeriod)
+	}
+}
+
+func TestConfigDefaults(t *testing.T) {
+	cfg := &config.Config{
+		URL:               "https://example.com",
+		RequestsPerSecond: 1.0,
+		Duration:          10 * time.Second,
+		Concurrency:       1,
+	}
+
+	cfg.SetDefaults()
+
+	if cfg.Algorithm != config.TokenBucket {
+		t.Errorf("Expected default algorithm to be %s, got %s", config.TokenBucket, cfg.Algorithm)
+	}
+
+	if cfg.HTTPTimeout != 30*time.Second {
+		t.Errorf("Expected default HTTPTimeout to be 30s, got %v", cfg.HTTPTimeout)
+	}
+
+	if cfg.ConnectTimeout != 10*time.Second {
+		t.Errorf("Expected default ConnectTimeout to be 10s, got %v", cfg.ConnectTimeout)
+	}
+
+	if cfg.TLSHandshakeTimeout != 10*time.Second {
+		t.Errorf("Expected default TLSHandshakeTimeout to be 10s, got %v", cfg.TLSHandshakeTimeout)
+	}
+
+	if cfg.ResponseHeaderTimeout != 10*time.Second {
+		t.Errorf("Expected default ResponseHeaderTimeout to be 10s, got %v", cfg.ResponseHeaderTimeout)
+	}
+
+	if cfg.TCPKeepAlivePeriod != 30*time.Second {
+		t.Errorf("Expected default TCPKeepAlivePeriod to be 30s, got %v", cfg.TCPKeepAlivePeriod)
 	}
 }
