@@ -178,7 +178,8 @@ func TestMainEnvironmentVariables(t *testing.T) {
 
 	// Create config with environment variables
 	cfg := config.LoadFromFlags("https://default.com", 1.0, "token-bucket", 10*time.Second,
-		1, "GET", "", "", 30*time.Second, true, 30*time.Second, false, 100, 10)
+		1, "GET", "", "", 30*time.Second, 10*time.Second, 10*time.Second, 10*time.Second,
+		true, 30*time.Second, false, 100, 10)
 
 	// Verify environment variables were applied
 	if cfg.URL != "https://env.example.com" {
@@ -413,6 +414,9 @@ func TestMainConfigLoadFromFlags(t *testing.T) {
 		"key:value",           // headers
 		`{"test":true}`,       // body
 		10*time.Second,        // httpTimeout
+		10*time.Second,        // connectTimeout
+		10*time.Second,        // tlsHandshakeTimeout
+		10*time.Second,        // responseHeaderTimeout
 		true,                  // tcpKeepAlive
 		30*time.Second,        // tcpKeepAlivePeriod
 		false,                 // disableKeepAlives
@@ -567,6 +571,9 @@ func BenchmarkMainConfigCreation(b *testing.B) {
 			"",
 			"",
 			30*time.Second,
+			10*time.Second,
+			10*time.Second,
+			10*time.Second,
 			true,
 			30*time.Second,
 			false,

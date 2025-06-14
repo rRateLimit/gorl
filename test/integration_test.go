@@ -212,7 +212,8 @@ func TestEnvironmentVariableIntegration(t *testing.T) {
 
 	// Create config with defaults (should be overridden by env vars)
 	cfg := config.LoadFromFlags("https://default.com", 1.0, "token-bucket", 10*time.Second,
-		1, "POST", "", "", 30*time.Second, true, 30*time.Second, false, 100, 10)
+		1, "POST", "", "", 30*time.Second, 10*time.Second, 10*time.Second, 10*time.Second,
+		true, 30*time.Second, false, 100, 10)
 
 	// Verify environment variables were applied
 	if cfg.URL != testServer.URL()+"/env-test" {
