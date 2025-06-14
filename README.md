@@ -221,3 +221,114 @@ Algorithm Used: Token Bucket
 ## License
 
 MIT License - See the LICENSE file for details.
+
+## Performance Testing
+
+GoRL includes comprehensive performance testing capabilities:
+
+### Benchmark Mode
+
+Run GoRL in benchmark mode to measure performance metrics:
+
+```bash
+# Basic benchmark
+./gorl -url=https://api.example.com -rate=100 -duration=30s -benchmark
+
+# Benchmark with warmup
+./gorl -url=https://api.example.com -rate=100 -duration=30s -benchmark -warmup=10s
+```
+
+Benchmark mode provides:
+
+- Request throughput (requests/second)
+- Latency statistics (min/avg/max)
+- Memory usage metrics
+- CPU time measurements
+- GC statistics
+
+### Running Performance Tests
+
+```bash
+# Run Go benchmark tests
+make bench
+
+# Run performance stress tests
+make perf-test
+
+# Run full benchmark suite
+make benchmark
+```
+
+### Benchmark Script
+
+Use the included benchmark script for comprehensive testing:
+
+```bash
+# Run with default settings
+./scripts/benchmark.sh
+
+# Custom benchmark
+BENCHMARK_URL=https://your-api.com BENCHMARK_DURATION=60s ./scripts/benchmark.sh
+```
+
+The benchmark script tests:
+
+- Different rate limiting algorithms
+- Various request rates (10-1000 req/s)
+- Multiple concurrency levels (1-100)
+- Different timeout configurations
+
+### Performance Considerations
+
+1. **Algorithm Selection**:
+
+   - Token Bucket: Best overall performance, allows bursts
+   - Leaky Bucket: Consistent rate, higher CPU usage
+   - Fixed Window: Lowest memory usage, boundary effects
+   - Sliding Window Log: Most accurate, highest memory usage
+   - Sliding Window Counter: Good balance of accuracy and performance
+
+2. **Concurrency Tuning**:
+
+   - Start with concurrency = CPU cores
+   - Increase for I/O bound workloads
+   - Monitor goroutine count for leaks
+
+3. **Timeout Configuration**:
+   - Tight timeouts reduce resource usage
+   - Balance between reliability and performance
+   - Consider network latency in settings
+
+## Output Example
+
+```
+Starting rate limit test...
+Target URL: https://httpbin.org/get
+Rate: 5.00 requests/second
+Algorithm: Token Bucket
+Duration: 30s
+Concurrency: 2
+Method: GET
+----------------------------------------
+Requests: 25 | Success: 25 | Failed: 0 | Rate: 5.00 req/s
+Requests: 50 | Success: 50 | Failed: 0 | Rate: 5.00 req/s
+
+========================================
+Final Results:
+Total Requests: 150
+Successful Requests: 150
+Failed Requests: 0
+Success Rate: 100.00%
+
+Status Code Distribution:
+  200: 150 requests
+
+Response Times:
+  Min: 89.123ms
+  Max: 245.567ms
+  Avg: 142.345ms
+
+Actual Rate: 5.00 requests/second
+Target Rate: 5.00 requests/second
+Algorithm Used: Token Bucket
+```

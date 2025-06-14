@@ -323,3 +323,23 @@ status: ## Show project status
 	@echo "Dependencies: $$(go list -m all | wc -l) modules"
 	@echo "Test files: $$(find . -name '*_test.go' | wc -l) files"
 	@echo "Build artifacts: $$(ls -1 $(BUILD_DIR) 2>/dev/null | wc -l) files"
+
+## Test the application
+test:
+	@echo "Running tests..."
+	@go test -v ./...
+
+## Run benchmarks
+bench:
+	@echo "Running Go benchmarks..."
+	@go test -bench=. -benchmem ./test/... -run=^Benchmark
+
+## Run performance tests
+perf-test:
+	@echo "Running performance tests..."
+	@go test -v ./test/... -run="Performance|HighLoad|Stress|Accuracy" -timeout=30m
+
+## Run full benchmark suite
+benchmark: build
+	@echo "Running full benchmark suite..."
+	@./scripts/benchmark.sh

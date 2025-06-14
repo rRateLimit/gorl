@@ -41,6 +41,9 @@ func (ts *TestServer) handler(w http.ResponseWriter, r *http.Request) {
 	// Add delay if configured
 	if delay, exists := ts.delays[r.URL.Path]; exists {
 		time.Sleep(delay)
+	} else if delay, exists := ts.delays[""]; exists {
+		// Apply default delay if no path-specific delay
+		time.Sleep(delay)
 	}
 
 	// Default response
@@ -64,6 +67,11 @@ func (ts *TestServer) SetResponse(response TestResponse) {
 
 func (ts *TestServer) SetDelay(path string, delay time.Duration) {
 	ts.delays[path] = delay
+}
+
+func (ts *TestServer) SetResponseDelay(delay time.Duration) {
+	// Set delay for all paths
+	ts.delays[""] = delay
 }
 
 func (ts *TestServer) GetRequestCount() int64 {
