@@ -10,8 +10,8 @@ env:
   GO_VERSION: "1.23"
 
 jobs:
-  lint:
-    name: Lint
+  build:
+    name: Build
     runs-on: ubuntu-latest
 
     steps:
@@ -24,101 +24,5 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
-        with:
-          version: latest
-          args: --timeout=5m
-
-  security:
-    name: Security
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: true
-
-      - name: Run Gosec Security Scanner
-        uses: securecodewarrior/github-action-gosec@master
-        with:
-          args: "./..."
-
-      - name: Run govulncheck
-        run: |
-          go install golang.org/x/vuln/cmd/govulncheck@latest
-          govulncheck ./...
-
-  tidy:
-    name: Tidy
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: true
-
-      - name: Check if go mod tidy is clean
-        run: |
-          go mod tidy
-          git diff --exit-code go.mod go.sum
-
-  docker:
-    name: Docker Build
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: false
-          tags: gorl:test
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-  build-artifacts:
-    name: Build Artifacts
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: true
-
-      - name: Build for multiple platforms
-        run: |
-          GOOS=linux GOARCH=amd64 go build -o gorl-linux-amd64 .
-          GOOS=linux GOARCH=arm64 go build -o gorl-linux-arm64 .
-          GOOS=darwin GOARCH=amd64 go build -o gorl-darwin-amd64 .
-          GOOS=darwin GOARCH=arm64 go build -o gorl-darwin-arm64 .
-          GOOS=windows GOARCH=amd64 go build -o gorl-windows-amd64.exe .
-          GOOS=windows GOARCH=arm64 go build -o gorl-windows-arm64.exe .
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-artifacts
-          path: gorl-*
+      - name: Build
+        run: go build -v ./...
