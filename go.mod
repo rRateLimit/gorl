@@ -1,5 +1,5 @@
 module github.com/rRateLimit/gorl
 
-go 1.23.2
+go 1.24.0
 
-require golang.org/x/time v0.12.0
+require golang.org/x/time v0.13.0
